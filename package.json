@@ -1,0 +1,35 @@
+{
+  "name": "raspimcu",
+  "version": "0.1.0",
+  "description": "Node.js utilities and CLI for managing Raspberry Pi microcontroller boards",
+  "bin": {
+    "raspimcu": "./bin/raspimcu.js"
+  },
+  "main": "lib/index.js",
+  "type": "commonjs",
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node -e \"console.log('No automated tests yet')\""
+  },
+  "keywords": [
+    "raspberry-pi",
+    "raspberry-pi-pico",
+    "microcontroller",
+    "uf2",
+    "cli",
+    "serial"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "execa": "^8.0.1",
+    "fs-extra": "^11.2.0",
+    "serialport": "^11.0.0"
+  }
+}
