@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { runCli } = require('../lib/cli');
+import { runCli } from '../lib/cli.js';
 
 runCli(process.argv).catch((error) => {
   console.error(error instanceof Error ? error.message : error);

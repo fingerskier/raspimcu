@@ -6,7 +6,7 @@
     "raspimcu": "./bin/raspimcu.js"
   },
   "main": "lib/index.js",
-  "type": "commonjs",
+  "type": "module",
   "files": [
     "bin",
     "lib",

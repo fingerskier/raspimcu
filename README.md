@@ -6,6 +6,7 @@
 
 - List connected Raspberry Pi MCUs and report whether they are in serial or filesystem mode.
 - Copy files and directories to and from mounted UF2 storage volumes.
+- Upload, download, or execute commands on Raspberry Pi boards running MicroPython via [`mpremote`](https://docs.micropython.org/en/latest/reference/mpremote.html).
 - Reboot a device into filesystem mode via [`picotool`](https://github.com/raspberrypi/picotool).
 - Upload or download UF2 firmware images from a mounted board.
 - Works as both a Node.js module and an `npx`-friendly CLI.
@@ -26,6 +27,7 @@ npx raspimcu devices
 
 - Node.js 18 or newer.
 - [`picotool`](https://github.com/raspberrypi/picotool) in your `PATH` for rebooting boards into filesystem mode.
+- [`mpremote`](https://docs.micropython.org/en/latest/reference/mpremote.html) in your `PATH` for interacting with MicroPython firmware.
 - Access to mounted UF2 volumes created by Raspberry Pi MCUs (e.g. `/Volumes/RPI-RP2`, `/media/<user>/RPI-RP2`).
 
 ## CLI Usage
@@ -72,20 +74,40 @@ Inspect the `INFO_UF2.TXT` metadata from a mounted board:
 raspimcu firmware info /Volumes/RPI-RP2
 ```
 
+Upload a file to a MicroPython-enabled board over serial:
+
+```bash
+raspimcu micropython upload /dev/ttyACM0 ./main.py main.py
+```
+
+Download a file (or directory with `--recursive`) from the board:
+
+```bash
+raspimcu micropython download /dev/ttyACM0 main.py ./backups/main.py
+```
+
+Run a one-off REPL command (omit `--exec` for an interactive session):
+
+```bash
+raspimcu micropython repl /dev/ttyACM0 --exec "import os; print(os.listdir())"
+```
+
 Use `raspimcu devices --json` to integrate the discovery output into other tooling.
 
 ## Library Usage
 
 ```js
-const {
+import {
   listDevices,
   copyToDevice,
   copyFromDevice,
   putDeviceInFsMode,
   uploadFirmware,
   downloadFirmware,
-  readInfoFile
-} = require('raspimcu');
+  readInfoFile,
+  uploadToMicropython,
+  downloadFromMicropython
+} from 'raspimcu';
 
 async function flashFirmware() {
   const { devices } = await listDevices();
@@ -99,10 +121,15 @@ async function flashFirmware() {
   // Copy a UF2 once the device exposes a mount point.
   await uploadFirmware('./firmware.uf2', '/Volumes/RPI-RP2');
 }
+
+async function syncScripts(serialPath) {
+  await uploadToMicropython(serialPath, './src', 'lib');
+  await downloadFromMicropython(serialPath, 'main.py', './backups/main.py');
+}
 ```
 
 Each helper throws descriptive errors when paths are missing or commands fail, making it straightforward to compose your own workflows.
 
 ## License
 
-MIT
+Licensed under the [MIT License](LICENSE).
