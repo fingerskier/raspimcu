@@ -13,7 +13,7 @@
     "README.md"
   ],
   "scripts": {
-    "test": "node -e \"console.log('No automated tests yet')\""
+    "test": "vitest run"
   },
   "keywords": [
     "raspberry-pi",
@@ -31,5 +31,8 @@
     "execa": "^8.0.1",
     "fs-extra": "^11.2.0",
     "serialport": "^11.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.5"
   }
 }

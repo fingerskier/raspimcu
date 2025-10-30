@@ -130,6 +130,25 @@ async function syncScripts(serialPath) {
 
 Each helper throws descriptive errors when paths are missing or commands fail, making it straightforward to compose your own workflows.
 
+## Automated Tests
+
+This project uses [Vitest](https://vitest.dev/) for unit testing. Run the full suite with:
+
+```bash
+npm test
+```
+
+The tests cover key file-transfer helpers and firmware upload/download flows using temporary directories, so you can run them without attaching physical hardware.
+
+## Manual Firmware Test Scripts
+
+The `manual-tests` folder contains small scripts that exercise the firmware helpers directly against a mounted UF2 volume. They are useful sanity checks when working with real hardware:
+
+- `node manual-tests/upload-firmware.js <firmware.uf2> <mount-point> [target-name.uf2]`
+- `node manual-tests/download-firmware.js <mount-point> <destination.uf2> [filename.uf2]`
+
+Both scripts print progress information and propagate any validation errors raised by the library.
+
 ## License
 
 Licensed under the [MIT License](LICENSE).
