@@ -1,6 +1,6 @@
 {
   "name": "raspimcu",
-  "version": "0.1.0",
+  "version": "2025.10.31",
   "description": "Node.js utilities and CLI for managing Raspberry Pi microcontroller boards",
   "bin": {
     "raspimcu": "./bin/raspimcu.js"
