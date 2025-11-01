@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRp2040Device, filterRp2040Devices } from '../lib/devices.js';
+import { isRp2040Device, filterRp2040Devices, listDevices } from '../lib/devices.js';
 
 describe('RP2040 device filtering', () => {
   it('recognizes RP2040 serial devices by vendor id', () => {
@@ -38,5 +38,14 @@ describe('RP2040 device filtering', () => {
     ];
 
     expect(filterRp2040Devices(devices)).toEqual([]);
+  });
+
+  it('returns serializable errors when device enumeration fails', async () => {
+    const result = await listDevices({ searchRoots: [] });
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(() => structuredClone(result)).not.toThrow();
+    expect(result.errors[0]).toHaveProperty('source');
+    expect(result.errors[0]).toHaveProperty('error.message');
   });
 });
