@@ -53,6 +53,32 @@ describe('CLI contracts', () => {
     expect(console.error.mock.calls.flat().join(' ')).toMatch(/explicit.*serial|bus.*address/i);
   });
 
+  it.each(['repl', 'touch1200', 'repl,touch1200'])('auto-selects a path without a USB serial for %s', async (methods) => {
+    api.getSingleDevice.mockResolvedValue({ device: { path: '/dev/fake' }, error: null });
+    api.rebootToBootsel.mockResolvedValue({ method: methods.split(',')[0], output: '' });
+    await run('put-fs', '--methods', methods);
+    expect(api.rebootToBootsel).toHaveBeenCalledWith(expect.objectContaining({
+      path: '/dev/fake', serialNumber: undefined, methods: methods.split(',')
+    }));
+    expect(api.putDeviceInFsMode).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
+
+  it.each(['picotool', 'repl,picotool', 'touch1200,picotool'])('keeps auto-selection targeted when %s can invoke picotool', async (methods) => {
+    api.getSingleDevice.mockResolvedValue({ device: { path: '/dev/fake' }, error: null });
+    await run('put-fs', '--methods', methods);
+    expect(api.rebootToBootsel).not.toHaveBeenCalled();
+    expect(api.putDeviceInFsMode).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects serial-only auto-selection without a usable path', async () => {
+    api.getSingleDevice.mockResolvedValue({ device: { serialNumber: 'ABC' }, error: null });
+    await run('put-fs', '--methods', 'repl');
+    expect(api.rebootToBootsel).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
   it('rejects the unsupported drive selector before device access', async () => {
     await run('put-fs', '--drive', 'E:');
     expect(api.putDeviceInFsMode).not.toHaveBeenCalled();

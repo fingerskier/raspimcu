@@ -149,7 +149,8 @@ describe('rebootToBootsel', () => {
     expect(state.ports[0].isOpen).toBe(false);
   });
 
-  it('accepts the device node disappearing as a detach even without a close event', async () => {
+  // Windows COM ports are observed through enumeration, not filesystem nodes.
+  it.skipIf(process.platform === 'win32')('accepts the device node disappearing as a detach even without a close event', async () => {
     let present = true;
     fs.pathExists.mockImplementation(async () => present);
     state.behavior.write = (port, data, callback) => {
@@ -164,6 +165,23 @@ describe('rebootToBootsel', () => {
     expect(fs.pathExists).toHaveBeenCalledWith(PORT);
     expect(state.ports[0].closeCalls).toBe(1);
     expect(state.ports[0].isOpen).toBe(false);
+  });
+
+  it('accepts a listed port disappearing as a detach even without a close event', async () => {
+    let present = true;
+    state.listed = () => present ? [PORT] : [];
+    state.behavior.write = (port, data, callback) => {
+      Promise.resolve().then(() => {
+        callback(null);
+        if (isCommand(data)) present = false;
+      });
+    };
+    vi.useFakeTimers();
+    const outcome = await settle(rebootToBootsel({ path: PORT, methods: ['repl'] }), 1000);
+    expect(outcome.value).toMatchObject({ method: 'repl' });
+    expect(state.ports[0].closeCalls).toBe(1);
+    expect(state.ports[0].isOpen).toBe(false);
+    expect(execa).not.toHaveBeenCalled();
   });
 
   it('falls through a failed REPL and 1200-baud touch to picotool', async () => {
