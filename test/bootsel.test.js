@@ -226,6 +226,8 @@ describe('rebootToBootsel', () => {
   });
 
   it('skips serial methods without a path and never filters by vendor ID', async () => {
+    // Keep the exact remaining-budget assertion independent of wall-clock ticks.
+    vi.useFakeTimers();
     execa.mockResolvedValue({ stdout: 'ok' });
     await expect(rebootToBootsel({ bus: 1, address: 4 })).resolves.toEqual({ method: 'picotool', output: 'ok' });
     expect(state.ports).toHaveLength(0);
