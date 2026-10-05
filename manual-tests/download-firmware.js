@@ -6,7 +6,7 @@ async function main() {
   const [mountPoint, destination, sourceFilename] = process.argv.slice(2);
 
   if (!mountPoint || !destination) {
-    console.error('Usage: node manual-tests/download-firmware.js <mount-point> <destination.uf2> [filename.uf2]');
+    console.error('Usage: node manual-tests/download-firmware.js <storage-directory> <destination.uf2> [filename.uf2] (not BOOTSEL; use raspimcu firmware backup for flash extraction)');
     process.exitCode = 1;
     return;
   }

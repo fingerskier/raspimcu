@@ -50,7 +50,7 @@ describe('micropython wrapper', () => {
       expect(execa).toHaveBeenCalledWith(
         'mpremote',
         ['connect', '/dev/ttyACM0', 'fs', 'cp', sourceFile, ':/main.py'],
-        { timeout: undefined }
+        { timeout: 60000 }
       );
       expect(result.source).toBe(sourceFile);
       expect(result.target).toBe(':/main.py');
@@ -67,7 +67,7 @@ describe('micropython wrapper', () => {
       expect(execa).toHaveBeenCalledWith(
         'mpremote',
         ['connect', '/dev/ttyACM0', 'fs', 'cp', '-r', sourceDir, ':/lib'],
-        { timeout: undefined }
+        { timeout: 60000 }
       );
     });
 
@@ -146,6 +146,35 @@ describe('micropython wrapper', () => {
   });
 
   describe('downloadFromMicropython', () => {
+    it.each(['/', ':///', ':', '.', '/lib/..', '/lib/.'])('rejects ambiguous recursive source %s before creating the parent', async (source) => {
+      const destination = path.join(tempDir, 'downloads');
+      await expect(downloadFromMicropython('/dev/fake', source, destination, { recursive: true }))
+        .rejects.toThrow(/named remote directory/i);
+      expect(execa).not.toHaveBeenCalled();
+      expect(await fs.pathExists(destination)).toBe(false);
+    });
+    it.each(['/lib', ':/lib/'])('uses a missing parent repeatably for recursive source %s', async (source) => {
+      const destination = path.join(tempDir, 'downloads');
+      execa.mockImplementation(async (_, args) => {
+        const target = args.at(-1);
+        // Model mpremote: an existing target directory receives the source basename.
+        const basename = args.at(-2).slice(1).split('/').at(-1);
+        const stats = await fs.stat(target).catch(() => null);
+        const actual = stats?.isDirectory() ? path.join(target, basename) : target;
+        await fs.ensureDir(actual);
+        await fs.writeFile(path.join(actual, 'module.py'), 'pass');
+        return { stdout: '' };
+      });
+      for (let i = 0; i < 2; i++) {
+        const result = await downloadFromMicropython('/dev/fake', source, destination, { recursive: true });
+        expect(result.destination).toBe(path.join(destination, 'lib'));
+        expect(await fs.readFile(path.join(result.destination, 'module.py'), 'utf8')).toBe('pass');
+        expect(await fs.readdir(destination)).toEqual(['lib']);
+        expect(execa).toHaveBeenLastCalledWith('mpremote', ['connect', '/dev/fake', 'fs', 'cp', '-r', ':/lib', destination], { timeout: 60000 });
+      }
+      expect(await fs.pathExists(path.join(destination, 'lib', 'lib'))).toBe(false);
+    });
+
     it('calls mpremote with correct arguments', async () => {
       const destFile = path.join(tempDir, 'downloaded.py');
       execa.mockResolvedValue({ stdout: '' });
@@ -155,7 +184,7 @@ describe('micropython wrapper', () => {
       expect(execa).toHaveBeenCalledWith(
         'mpremote',
         ['connect', '/dev/ttyACM0', 'fs', 'cp', ':/main.py', destFile],
-        { timeout: undefined }
+        { timeout: 60000 }
       );
       expect(result.source).toBe(':/main.py');
       expect(result.destination).toBe(destFile);
@@ -172,7 +201,7 @@ describe('micropython wrapper', () => {
       expect(execa).toHaveBeenCalledWith(
         'mpremote',
         ['connect', '/dev/ttyACM0', 'fs', 'cp', '-r', ':/lib', destDir],
-        { timeout: undefined }
+        { timeout: 60000 }
       );
     });
 
@@ -209,6 +238,22 @@ describe('micropython wrapper', () => {
   });
 
   describe('runMicropythonRepl', () => {
+    it('executes an explicitly empty code string instead of opening a REPL', async () => {
+      execa.mockResolvedValue({ stdout: '' });
+      expect(await runMicropythonRepl('/dev/fake', { code: '' })).toBe('');
+      expect(execa).toHaveBeenCalledWith('mpremote', ['connect', '/dev/fake', 'exec', ''], { timeout: 30000 });
+    });
+    it('rejects invalid timeouts in all operations before spawn', async () => {
+      const source = path.join(tempDir, 'main.py');
+      await fs.writeFile(source, '');
+      for (const timeout of [0, null, '30', -1, 1.2, NaN, Infinity, 2147483648]) {
+        await expect(uploadToMicropython('/dev/fake', source, '/main.py', { timeout })).rejects.toThrow(/timeout/i);
+        await expect(downloadFromMicropython('/dev/fake', '/main.py', source, { timeout })).rejects.toThrow(/timeout/i);
+        await expect(runMicropythonRepl('/dev/fake', { timeout })).rejects.toThrow(/timeout/i);
+        await expect(runMicropythonRepl('/dev/fake', { timeout, code: 'pass' })).rejects.toThrow(/timeout/i);
+      }
+      expect(execa).not.toHaveBeenCalled();
+    });
     it('executes code with exec command', async () => {
       execa.mockResolvedValue({ stdout: 'Hello World\n' });
 
@@ -219,7 +264,7 @@ describe('micropython wrapper', () => {
       expect(execa).toHaveBeenCalledWith(
         'mpremote',
         ['connect', '/dev/ttyACM0', 'exec', 'print("Hello World")'],
-        { timeout: undefined }
+        { timeout: 30000 }
       );
       expect(result).toBe('Hello World');
     });
