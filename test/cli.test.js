@@ -4,6 +4,8 @@ vi.mock('../lib/index.js', () => ({
   listDevices: vi.fn(),
   getSingleDevice: vi.fn(),
   putDeviceInFsMode: vi.fn(),
+  rebootToBootsel: vi.fn(),
+  BOOTSEL_METHODS: ['repl', 'touch1200', 'picotool'],
   waitForMountedBoard: vi.fn(),
   copyToDevice: vi.fn(),
   copyFromDevice: vi.fn(),
@@ -75,6 +77,33 @@ describe('CLI contracts', () => {
     await run('put-fs', '--serial', 'ABC', '--wait-mount', '/missing');
     expect(process.exitCode).toBe(1);
     expect(console.log.mock.calls.flat().join(' ')).not.toContain('mount verified');
+  });
+
+  it('reboots over an explicit serial port without auto-selection or the picotool-only path', async () => {
+    api.rebootToBootsel.mockResolvedValue({ method: 'repl', output: '>>>' });
+    await run('put-fs', '--port', '/dev/ttyACM0', '--serial', 'ABC', '--methods', 'repl, picotool', '--timeout', '7000');
+    expect(api.getSingleDevice).not.toHaveBeenCalled();
+    expect(api.putDeviceInFsMode).not.toHaveBeenCalled();
+    expect(api.rebootToBootsel).toHaveBeenCalledWith({
+      path: '/dev/ttyACM0', serialNumber: 'ABC', bus: undefined, address: undefined,
+      picotoolPath: undefined, timeout: 7000, methods: ['repl', 'picotool']
+    });
+    expect(process.exitCode).toBe(0);
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('mount readiness not verified'));
+  });
+
+  it('reports every failed BOOTSEL method with a nonzero exit', async () => {
+    api.rebootToBootsel.mockRejectedValue(new Error('Unable to reboot into BOOTSEL. repl: no disconnect; picotool: not installed'));
+    await run('put-fs', '--port', '/dev/ttyACM0');
+    expect(api.rebootToBootsel).toHaveBeenCalledWith(expect.objectContaining({ path: '/dev/ttyACM0', methods: undefined }));
+    expect(process.exitCode).toBe(1);
+    expect(console.error.mock.calls.flat().join(' ')).toMatch(/repl: no disconnect; picotool: not installed/);
+  });
+
+  it.each(['bogus', 'repl,repl', ','])('rejects invalid --methods %s before device access', async (methods) => {
+    await expect(run('put-fs', '--port', '/dev/ttyACM0', '--methods', methods)).rejects.toThrow();
+    expect(api.rebootToBootsel).not.toHaveBeenCalled();
+    expect(process.stderr.write.mock.calls.flat().join('')).toMatch(/methods/i);
   });
 
   it('reports UF2 copy completion without claiming a verified flash', async () => {
