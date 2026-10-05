@@ -1,6 +1,6 @@
 {
   "name": "raspimcu",
-  "version": "2025.12.19",
+  "version": "2026.10.5",
   "description": "Node.js utilities and CLI for managing Raspberry Pi microcontroller boards",
   "engines": {
     "node": ">=22.12.0"
