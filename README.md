@@ -7,7 +7,7 @@
 - List connected Raspberry Pi MCUs and report whether they are in serial or filesystem mode.
 - Copy files and directories on genuine mounted filesystems, with path and symlink checks.
 - Upload, download, or execute commands on Raspberry Pi boards running MicroPython via [`mpremote`](https://docs.micropython.org/en/latest/reference/mpremote.html).
-- Reboot a device into filesystem mode via [`picotool`](https://github.com/raspberrypi/picotool).
+- Reboot a device into filesystem mode via [`picotool`](https://github.com/raspberrypi/picotool), or over serial without it (MicroPython REPL, 1200-baud touch).
 - Validate and copy RP2040 UF2 firmware to a BOOTSEL volume; back up flash through `picotool`.
 - Works as both a Node.js module and an `npx`-friendly CLI.
 
@@ -26,7 +26,7 @@ npx raspimcu devices
 ## Requirements
 
 - Node.js 22.12.0 or newer (the CLI uses import attributes; CI tests the minimum and Node 24).
-- [`picotool`](https://github.com/raspberrypi/picotool) in your `PATH` for rebooting boards into filesystem mode.
+- [`picotool`](https://github.com/raspberrypi/picotool) in your `PATH` for picotool-based reboots and flash backups. Not needed for the serial BOOTSEL methods (`put-fs --port`, `rebootToBootsel`).
 - [`mpremote`](https://docs.micropython.org/en/latest/reference/mpremote.html) in your `PATH` for interacting with MicroPython firmware.
 - Access to mounted BOOTSEL volumes for firmware upload (e.g. `/Volumes/RPI-RP2`, `/media/<user>/RPI-RP2`, `/run/media/<user>/RPI-RP2`).
 
@@ -51,6 +51,15 @@ Reboot a specific board into filesystem mode using `picotool`:
 ```bash
 raspimcu put-fs --serial E6606603B7313128 --wait-mount "/media/$USER/RPI-RP2"
 ```
+
+Boards without a usable picotool path (picotool not installed, e.g. Raspberry Pi OS bullseye, or firmware with a custom USB VID/PID and no picotool reset interface) can be rebooted over their serial port instead:
+
+```bash
+raspimcu put-fs --port /dev/ttyACM0 --wait-mount "/media/$USER/RPI-RP2"
+raspimcu put-fs --port /dev/ttyACM0 --methods repl,picotool --serial E6606603B7313128
+```
+
+`--port` tries `repl`, then `touch1200`, then `picotool` (override with `--methods`, a comma-separated order) and skips automatic device selection, so it also works for boards outside the Raspberry Pi vendor ID. The picotool fallback is untargeted unless you also pass `--serial` or `--bus`/`--address`. `--timeout` is the total budget across all methods.
 
 Omit `--wait-mount` to send the reboot command without claiming mount readiness. The supplied wait path must be the intended board's path; metadata proves a compatible volume is present, not its USB serial identity. `--drive` is not a picotool selector and is now rejected; use `--serial` or `--bus`/`--address`. Forced reboot requires compatible running firmware; otherwise enter BOOTSEL manually.
 
@@ -113,7 +122,7 @@ Use `raspimcu devices --json` to integrate the discovery output into other tooli
 
 ### Timeouts and discovery
 
-`--timeout <ms>` accepts a positive integer up to 2147483647. Defaults: picotool reboot/version 10000 ms; flash backup and MicroPython transfers 60000 ms; noninteractive `repl --exec` 30000 ms. Interactive REPL has no default timeout. Explicit `--exec ""` remains noninteractive. Firmware writes are never automatically retried.
+`--timeout <ms>` accepts a positive integer up to 2147483647. Defaults: picotool reboot/version 10000 ms; `put-fs --port` 10000 ms total across methods; flash backup and MicroPython transfers 60000 ms; noninteractive `repl --exec` 30000 ms. Interactive REPL has no default timeout. Explicit `--exec ""` remains noninteractive. Firmware writes are never automatically retried.
 
 `put-fs --wait-mount <path>` has a separate `--wait-timeout <ms>` (default 10000). A timeout is an error, not evidence that a reboot or write did not occur; inspect device state before retrying.
 
@@ -157,6 +166,23 @@ async function syncScripts(serialPath) {
 ```
 
 Each helper throws descriptive errors when paths are missing or commands fail, making it straightforward to compose your own workflows.
+
+### Rebooting into BOOTSEL without picotool
+
+```js
+import { rebootToBootsel, waitForMountedBoard } from 'raspimcu';
+
+const { method, output } = await rebootToBootsel({ path: '/dev/ttyACM0', timeout: 10000 });
+await waitForMountedBoard('/media/pi/RPI-RP2');
+```
+
+`rebootToBootsel({ path, serialNumber, bus, address, picotoolPath, timeout, methods })` tries each method in `methods` (default `['repl', 'touch1200', 'picotool']`) until one succeeds and resolves `{ method, output }`:
+
+- `repl` opens `path`, sends Ctrl-C twice to interrupt the running program, then `import machine; machine.bootloader()`. It succeeds when the port disconnects within a few seconds. `output` is whatever the board printed. This requires the MicroPython REPL to be reachable on that serial interface; firmware that disables Ctrl-C (`micropython.kbd_intr(-1)`) or owns the port for its own protocol will not respond.
+- `touch1200` opens `path` at 1200 baud, drops DTR/RTS and closes, then waits for the port to disappear. This is the Arduino-pico convention; stock MicroPython rp2 builds ignore it unless built with `MICROPY_HW_USB_CDC_1200BPS_TOUCH`. It fails without touching the board when the port's presence cannot be observed (for example, a path the OS does not list).
+- `picotool` runs `putDeviceInFsMode` with `serialNumber`/`bus`/`address`/`picotoolPath`.
+
+`repl` and `touch1200` are skipped when `path` is omitted and never filter by USB vendor ID. `timeout` (default 10000 ms) is shared by all attempts; each serial attempt waits at most 3000 ms for a disconnect. Every attempt closes its serial port before the next one starts. If all attempts fail, the error's `errors` property lists `{ method, message }` per attempt, and `code` is `ETIMEDOUT` when the budget ran out before every method was tried. Invalid options throw `TypeError` (or `RangeError` for timeouts) before any device is touched. A detach is not proof of BOOTSEL; verify with `waitForMountedBoard`.
 
 `backupFirmware('./backup.uf2', { serialNumber, timeout, overwrite: false })` returns `{ destination, output }`. `downloadFirmware(mountPoint, destination, { filename })` retains its file-copy return value `{ source, destination }` but rejects BOOTSEL. Recursive MicroPython downloads create the destination parent directory if missing: `downloadFromMicropython(port, '/lib', './backups', { recursive: true })` consistently updates `./backups/lib`, including the first call, rather than nesting another `lib`.
 
